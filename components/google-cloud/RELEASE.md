@@ -1,6 +1,6 @@
 ## Upcoming release
 * Fix `v1.automl.training_job.AutoMLImageTrainingJobRunOp` `ModuleNotFoundError`
-
+* Use `llama-2-7b` for the base reward model when tuning `llama-2-13` with the `preview.llm.rlhf_pipeline`
 
 ## Release 2.6.0
 * Bump supported KFP versions to kfp>=2.0.0b10,<=2.4.0

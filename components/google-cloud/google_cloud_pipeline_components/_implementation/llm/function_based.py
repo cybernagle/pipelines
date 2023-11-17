@@ -302,8 +302,8 @@ def resolve_reference_model_metadata(
       'llama-2-13b': reference_model_metadata(
           large_model_reference='LLAMA_2_13B',
           reference_model_path='gs://vertex-rlhf-restricted/pretrained_models/llama/t5x_llama_2_13b/',
-          reward_model_reference='LLAMA_2_13B',
-          reward_model_path='gs://vertex-rlhf-restricted/pretrained_models/llama/t5x_llama_2_13b/',
+          reward_model_reference='LLAMA_2_7B',
+          reward_model_path='gs://vertex-rlhf-restricted/pretrained_models/llama/t5x_llama_2_7b/',
           is_supported=True,
       ),
       'llama-2-7b-chat': reference_model_metadata(
@@ -316,8 +316,8 @@ def resolve_reference_model_metadata(
       'llama-2-13b-chat': reference_model_metadata(
           large_model_reference='LLAMA_2_13B_CHAT',
           reference_model_path='gs://vertex-rlhf-restricted/pretrained_models/llama/t5x_llama_2_13b_chat/',
-          reward_model_reference='LLAMA_2_13B',
-          reward_model_path='gs://vertex-rlhf-restricted/pretrained_models/llama/t5x_llama_2_13b/',
+          reward_model_reference='LLAMA_2_7B',
+          reward_model_path='gs://vertex-rlhf-restricted/pretrained_models/llama/t5x_llama_2_7b/',
           is_supported=True,
       ),
   }
@@ -495,3 +495,18 @@ def resolve_instruction(
   """
   instruction = instruction or ''
   return instruction if 'chat' not in large_model_reference.lower() else ''
+
+
+@dsl.component(base_image=_image.GCPC_IMAGE_TAG, install_kfp_package=False)
+def resolve_num_microbatches(large_model_reference: str) -> int:
+  """Resolves the number of microbatches to use during training.
+
+  Args:
+    large_model_reference: Base model tuned by the pipeline.
+
+  Returns:
+    Number of microbatches to break the total batch size into during training.
+  """
+  if 'llama' in large_model_reference.lower():
+    return 2
+  return 0
