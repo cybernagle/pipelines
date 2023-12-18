@@ -200,6 +200,7 @@ def list(ctx: click.Context, experiment_id: str, page_token: str, max_size: int,
         page_token=page_token,
         page_size=max_size,
         sort_by=sort_by,
+        namespace=namespace,
         filter=filter)
     output.print_output(
         response.recurring_runs or [],
