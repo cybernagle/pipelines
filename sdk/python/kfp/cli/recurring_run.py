@@ -194,6 +194,7 @@ def list(ctx: click.Context, experiment_id: str, page_token: str, max_size: int,
     """List recurring runs."""
     client_obj: client.Client = ctx.obj['client']
     output_format = ctx.obj['output']
+    namespace = client_obj.get_user_namespace()
 
     response = client_obj.list_recurring_runs(
         experiment_id=experiment_id,
