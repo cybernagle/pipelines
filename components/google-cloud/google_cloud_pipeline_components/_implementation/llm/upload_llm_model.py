@@ -23,10 +23,10 @@ from kfp import dsl
 # pytype: disable=unsupported-operands
 # pytype: disable=import-error
 @dsl.component(base_image=_image.GCPC_IMAGE_TAG, install_kfp_package=False)
-def upload_llm_model(
+def refined_upload_llm_model(
     project: str,
     location: str,
-    artifact_uri: dsl.Input[dsl.Artifact],
+    artifact_uri: str,
     model_reference_name: str,
     model_display_name: str,
     regional_endpoint: str,
@@ -34,13 +34,14 @@ def upload_llm_model(
     gcp_resources: dsl.OutputPath(str),
     encryption_spec_key_name: str = '',
     upload_model: bool = True,
+    tune_type: str = '',
 ):
   """Uploads LLM model.
 
   Args:
       project: Name of the GCP project.
       location: Location for model upload and deployment.
-      artifact_uri: KFP Artifact for adapter.
+      artifact_uri: Path to the artifact to upload.
       model_reference_name: Large model reference name.
       model_display_name: Name of the model (shown in Model Registry).
       regional_endpoint: Regional API endpoint.
@@ -48,6 +49,8 @@ def upload_llm_model(
       upload_model: Whether to upload the model to the Model Registry. Default
         is ``True``. If ``False``, the model will not be uploaded and output
         artifacts will contain empty strings.
+      tune_type: Method used to tune the model, e.g. ``rlhf``. If present, this
+        value is used to set the ``tune-type`` run label during model upload.
 
   Returns:
       model_resource_name: Path to the created Model on Model Registry.
@@ -76,6 +79,8 @@ def upload_llm_model(
     labels['google-vertex-llm-tuning-base-model-id'] = (
         model_reference_name.replace('@', '-')
     )
+    if tune_type:
+      labels['tune-type'] = tune_type
 
     model_upload_payload = {
         'model': {
@@ -83,7 +88,7 @@ def upload_llm_model(
             'largeModelReference': {'name': model_reference_name},
             'labels': labels,
             'generatedModelSource': {'genie_source': {'base_model_uri': ''}},
-            'artifactUri': artifact_uri.uri,
+            'artifactUri': artifact_uri,
         }
     }
     if encryption_spec_key_name:

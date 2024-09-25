@@ -696,7 +696,7 @@ inputs:
 - {name: message, type: PipelineTaskFinalStatus}
 implementation:
   container:
-    image: python:3.7
+    image: python:3.9
     command:
     - echo
     - {inputValue: message}
@@ -749,6 +749,41 @@ implementation:
             pipeline_spec['root']['dag']['tasks']['for-loop-2']
             ['iteratorPolicy']['parallelismLimit'], 2)
 
+    def test_compile_parallel_for_with_incompatible_input_type(self):
+
+        @dsl.component
+        def producer_op(item: str) -> str:
+            return item
+
+        @dsl.component
+        def list_dict_maker() -> List[Dict[str, int]]:
+            return [{'a': 1, 'b': 2}, {'a': 2, 'b': 3}, {'a': 3, 'b': 4}]
+
+        with self.assertRaisesRegex(
+                type_utils.InconsistentTypeException,
+                "Incompatible argument passed to the input 'item' of component 'producer-op': Argument type 'NUMBER_INTEGER' is incompatible with the input type 'STRING'"
+        ):
+
+            @dsl.pipeline
+            def my_pipeline(text: bool):
+                with dsl.ParallelFor(items=list_dict_maker().output) as item:
+                    producer_task = producer_op(item=item.a)
+
+    def test_compile_parallel_for_with_relaxed_type_checking(self):
+
+        @dsl.component
+        def producer_op(item: str) -> str:
+            return item
+
+        @dsl.component
+        def list_dict_maker() -> List[Dict]:
+            return [{'a': 1, 'b': 2}, {'a': 2, 'b': 3}, {'a': 3, 'b': 4}]
+
+        @dsl.pipeline
+        def my_pipeline(text: bool):
+            with dsl.ParallelFor(items=list_dict_maker().output) as item:
+                producer_task = producer_op(item=item.a)
+
     def test_compile_parallel_for_with_invalid_parallelism(self):
 
         @dsl.component
@@ -789,6 +824,33 @@ implementation:
             for_loop_2['iteratorPolicy']
         with self.assertRaises(KeyError):
             for_loop_4['iteratorPolicy']
+
+    def test_cannot_compile_parallel_for_with_single_param(self):
+
+        with self.assertRaisesRegex(
+                ValueError,
+                r'Cannot iterate over a single parameter using `dsl\.ParallelFor`\. Expected a list of parameters as argument to `items`\.'
+        ):
+
+            @dsl.pipeline
+            def my_pipeline():
+                single_param_task = print_and_return(text='string')
+                with dsl.ParallelFor(items=single_param_task.output) as item:
+                    print_and_return(text=item)
+
+    def test_cannot_compile_parallel_for_with_single_artifact(self):
+
+        with self.assertRaisesRegex(
+                ValueError,
+                r'Cannot iterate over a single artifact using `dsl\.ParallelFor`\. Expected a list of artifacts as argument to `items`\.'
+        ):
+
+            @dsl.pipeline
+            def my_pipeline():
+                single_artifact_task = print_and_return_as_artifact(
+                    text='string')
+                with dsl.ParallelFor(items=single_artifact_task.output) as item:
+                    print_artifact(a=item)
 
     def test_pipeline_in_pipeline(self):
 
@@ -1110,7 +1172,7 @@ class TestCompileComponent(parameterized.TestCase):
         def hello_world_container() -> dsl.ContainerSpec:
             """Hello world component."""
             return dsl.ContainerSpec(
-                image='python:3.7',
+                image='python:3.9',
                 command=['echo', 'hello world'],
                 args=[],
             )
@@ -1133,7 +1195,7 @@ class TestCompileComponent(parameterized.TestCase):
         @dsl.container_component
         def container_simple_io(text: str, output_path: dsl.OutputPath(str)):
             return dsl.ContainerSpec(
-                image='python:3.7',
+                image='python:3.9',
                 command=['my_program', text],
                 args=['--output_path', output_path])
 
@@ -2181,7 +2243,7 @@ class TestYamlComments(unittest.TestCase):
         def my_container_component(text: str, output_path: OutputPath(str)):
             """component description."""
             return ContainerSpec(
-                image='python:3.7',
+                image='python:3.9',
                 command=['my_program', text],
                 args=['--output_path', output_path])
 
@@ -3320,31 +3382,31 @@ class TestResourceConfig(unittest.TestCase):
             ['exec-return-1']['container'])
 
         self.assertEqual(
-            5, dict_format['deploymentSpec']['executors']['exec-return-1-2']
-            ['container']['resources']['cpuLimit'])
+            '5', dict_format['deploymentSpec']['executors']['exec-return-1-2']
+            ['container']['resources']['resourceCpuLimit'])
         self.assertNotIn(
             'memoryLimit', dict_format['deploymentSpec']['executors']
             ['exec-return-1-2']['container']['resources'])
 
         self.assertEqual(
-            50, dict_format['deploymentSpec']['executors']['exec-return-1-3']
-            ['container']['resources']['memoryLimit'])
+            '50G', dict_format['deploymentSpec']['executors']['exec-return-1-3']
+            ['container']['resources']['resourceMemoryLimit'])
         self.assertNotIn(
             'cpuLimit', dict_format['deploymentSpec']['executors']
             ['exec-return-1-3']['container']['resources'])
 
         self.assertEqual(
-            2, dict_format['deploymentSpec']['executors']['exec-return-1-4']
-            ['container']['resources']['cpuRequest'])
+            '2', dict_format['deploymentSpec']['executors']['exec-return-1-4']
+            ['container']['resources']['resourceCpuRequest'])
         self.assertEqual(
-            5, dict_format['deploymentSpec']['executors']['exec-return-1-4']
-            ['container']['resources']['cpuLimit'])
+            '5', dict_format['deploymentSpec']['executors']['exec-return-1-4']
+            ['container']['resources']['resourceCpuLimit'])
         self.assertEqual(
-            4, dict_format['deploymentSpec']['executors']['exec-return-1-4']
-            ['container']['resources']['memoryRequest'])
+            '4G', dict_format['deploymentSpec']['executors']['exec-return-1-4']
+            ['container']['resources']['resourceMemoryRequest'])
         self.assertEqual(
-            50, dict_format['deploymentSpec']['executors']['exec-return-1-4']
-            ['container']['resources']['memoryLimit'])
+            '50G', dict_format['deploymentSpec']['executors']['exec-return-1-4']
+            ['container']['resources']['resourceMemoryLimit'])
 
 
 class TestPlatformConfig(unittest.TestCase):
@@ -4383,7 +4445,7 @@ class TestConditionLogic(unittest.TestCase):
             self):
         with self.assertRaisesRegex(
                 tasks_group.InvalidControlFlowException,
-                'dsl\.Else can only be used following an upstream dsl\.If or dsl\.Elif\.'
+                r'dsl\.Else can only be used following an upstream dsl\.If or dsl\.Elif\.'
         ):
 
             @dsl.pipeline
@@ -4786,6 +4848,12 @@ class TestDslOneOf(unittest.TestCase):
                 x = dsl.OneOf(print_task_1.outputs['a'],
                               print_task_2.outputs['a'])
                 print_artifact(a=x)
+                # test can be consumed multiple times from same oneof object
+                print_artifact(a=x)
+                y = dsl.OneOf(print_task_1.outputs['a'],
+                              print_task_2.outputs['a'])
+                # test can be consumed multiple times from different equivalent oneof objects
+                print_artifact(a=y)
 
         # hole punched through if
         self.assertEqual(
@@ -4840,7 +4908,7 @@ class TestDslOneOf(unittest.TestCase):
     def test_nested_under_condition_returned_raises(self):
         with self.assertRaisesRegex(
                 compiler_utils.InvalidTopologyException,
-                f'Pipeline outputs may only be returned from the top level of the pipeline function scope\. Got pipeline output dsl\.OneOf from within the control flow group dsl\.If\.'
+                r'Pipeline outputs may only be returned from the top level of the pipeline function scope\. Got pipeline output dsl\.OneOf from within the control flow group dsl\.If\.'
         ):
 
             @dsl.pipeline
@@ -4893,7 +4961,7 @@ class TestDslOneOf(unittest.TestCase):
 
         with self.assertRaisesRegex(
                 compiler_utils.InvalidTopologyException,
-                f'Pipeline outputs may only be returned from the top level of the pipeline function scope\. Got pipeline output dsl\.OneOf from within the control flow group dsl\.ParallelFor\.'
+                r'Pipeline outputs may only be returned from the top level of the pipeline function scope\. Got pipeline output dsl\.OneOf from within the control flow group dsl\.ParallelFor\.'
         ):
 
             @dsl.pipeline
@@ -4915,7 +4983,7 @@ class TestDslOneOf(unittest.TestCase):
 
         with self.assertRaisesRegex(
                 compiler_utils.InvalidTopologyException,
-                f'Illegal task dependency across DSL context managers\. A downstream task cannot depend on an upstream task within a dsl\.If context unless the downstream is within that context too\. Found task print-artifact which depends on upstream task condition-branches-5 within an uncommon dsl\.If context\.'
+                r'Illegal task dependency across DSL context managers\. A downstream task cannot depend on an upstream task within a dsl\.If context unless the downstream is within that context too\. Found task print-artifact which depends on upstream task condition-branches-5 within an uncommon dsl\.If context\.'
         ):
 
             @dsl.pipeline
@@ -4938,7 +5006,7 @@ class TestDslOneOf(unittest.TestCase):
     def test_return_at_wrong_level(self):
         with self.assertRaisesRegex(
                 compiler_utils.InvalidTopologyException,
-                f'Pipeline outputs may only be returned from the top level of the pipeline function scope\. Got pipeline output dsl\.OneOf from within the control flow group dsl\.If\.'
+                r'Pipeline outputs may only be returned from the top level of the pipeline function scope\. Got pipeline output dsl\.OneOf from within the control flow group dsl\.If\.'
         ):
 
             @dsl.pipeline
@@ -5075,7 +5143,7 @@ class TestDslOneOf(unittest.TestCase):
     def test_oneof_in_fstring(self):
         with self.assertRaisesRegex(
                 NotImplementedError,
-                f'dsl\.OneOf does not support string interpolation\.'):
+                r'dsl\.OneOf does not support string interpolation\.'):
 
             @dsl.pipeline
             def roll_die_pipeline():

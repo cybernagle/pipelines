@@ -1,0 +1,31 @@
+name: Periodic Functional Tests
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Run every day at midnight
+
+jobs:
+  run_tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.9
+      - name: Create KFP cluster
+        uses: ./.github/actions/kfp-cluster
+      - name: Port forward kfp apiserver
+        run: |
+          nohup kubectl port-forward --namespace kubeflow svc/ml-pipeline 8888:8888 &
+      - name: Run Functional Tests
+        run: |
+          log_dir=$(mktemp -d)
+          ./test/kfp-functional-test/kfp-functional-test.sh > $log_dir/periodic_tests.txt
+      - name: Collect test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: periodic-functional-artifacts
+          path: /tmp/tmp.*/*

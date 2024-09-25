@@ -267,6 +267,7 @@ class PipelineArtifactChannel(PipelineChannel):
             channel_type: The type of the pipeline channel.
             task_name: Optional; the name of the task that produces the pipeline
                 channel.
+            is_artifact_list: True if `channel_type` represents a list of the artifact type.
 
         Raises:
             ValueError: If name or task_name contains invalid characters.
@@ -585,7 +586,7 @@ def extract_pipeline_channels_from_string(
 
 
 def extract_pipeline_channels_from_any(
-    payload: Union[PipelineChannel, str, list, tuple, dict]
+    payload: Union[PipelineChannel, str, int, float, bool, list, tuple, dict]
 ) -> List[PipelineChannel]:
     """Recursively extract PipelineChannels from any object or list of objects.
 

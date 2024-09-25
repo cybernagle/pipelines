@@ -22,7 +22,7 @@ from kfp import dsl
 
 
 # pylint: disable=g-import-not-at-top, g-doc-args, unexpected-keyword-arg
-@dsl.component
+@dsl.component(base_image=version.LLM_EVAL_IMAGE_TAG)
 def add_json_escape_to_list(input_list: List[str]) -> str:
   import json
 
@@ -38,6 +38,9 @@ def evaluation_dataset_preprocessor_internal(
     output_dirs: dsl.OutputPath(list),
     gcp_resources: dsl.OutputPath(str),
     input_field_name: str = 'input_text',
+    role_field_name: str = 'role',
+    target_field_name: str = 'ground_truth',
+    model_name: str = 'publishers/google/model/text-bison@002',
     display_name: str = 'llm_evaluation_dataset_preprocessor_component',
     machine_type: str = 'e2-highmem-16',
     service_account: str = '',
@@ -56,6 +59,11 @@ def evaluation_dataset_preprocessor_internal(
       gcs_source_uris: A json escaped list of GCS URIs of the input eval dataset.
       input_field_name: The field name of the input eval dataset instances that
         contains the input prompts to the LLM.
+      role_field_name: The field name of the role for input eval dataset instances
+        that contains the input prompts to the LLM.
+      target_field_name: The field name of the target for input eval dataset
+        instances.
+      model_name: Name of the model being used to create model-specific schemas.
       machine_type: The machine type of this custom job. If not set, defaulted
         to `e2-highmem-16`. More details:
         https://cloud.google.com/compute/docs/machine-resource
@@ -92,6 +100,9 @@ def evaluation_dataset_preprocessor_internal(
               f'--eval_dataset_preprocessor={True}',
               f'--gcs_source_uris={gcs_source_uris}',
               f'--input_field_name={input_field_name}',
+              f'--role_field_name={role_field_name}',
+              f'--target_field_name={target_field_name}',
+              f'--model_name={model_name}',
               f'--output_dirs={output_dirs}',
               '--executor_input={{$.json_escape[1]}}',
           ],
@@ -109,8 +120,11 @@ def llm_evaluation_dataset_preprocessor_graph_component(
     location: str,
     gcs_source_uris: List[str],
     input_field_name: str = 'input_text',
+    role_field_name: str = 'role',
+    target_field_name: str = 'ground_truth',
+    model_name: str = 'publishers/google/model/text-bison@002',
     display_name: str = 'llm_evaluation_dataset_preprocessor_component',
-    machine_type: str = 'e2-highmem-16',
+    machine_type: str = 'e2-standard-4',
     service_account: str = '',
     network: str = '',
     encryption_spec_key_name: str = '',
@@ -126,9 +140,14 @@ def llm_evaluation_dataset_preprocessor_graph_component(
       gcs_source_uris: A list of GCS URIs of the input eval dataset.
       input_field_name: The field name of the input eval dataset instances that
         contains the input prompts to the LLM.
+      role_field_name: The field name of the role for input eval dataset
+        instances that contains the input prompts to the LLM.
+      target_field_name: The field name of the target for input eval dataset
+        instances.
+      model_name: Name of the model being used to create model-specific schemas.
       display_name: The name of the Evaluation job.
       machine_type: The machine type of this custom job. If not set, defaulted
-        to `e2-highmem-16`. More details:
+        to `e2-standard-4`. More details:
         https://cloud.google.com/compute/docs/machine-resource
       service_account: Sets the default service account for workload run-as
         account. The service account running the pipeline
@@ -163,6 +182,9 @@ def llm_evaluation_dataset_preprocessor_graph_component(
           input_list=gcs_source_uris
       ).output,
       input_field_name=input_field_name,
+      role_field_name=role_field_name,
+      target_field_name=target_field_name,
+      model_name=model_name,
       display_name=display_name,
       machine_type=machine_type,
       service_account=service_account,

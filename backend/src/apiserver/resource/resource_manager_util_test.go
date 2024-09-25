@@ -68,7 +68,7 @@ spec:
       command:
       - python
       - -c
-      image: python:alpine3.6
+      image: python:alpine3.9
       name: ""
       resources: {}
     inputs: {}
@@ -136,7 +136,7 @@ status:
 
 	newWfString, err := yaml.Marshal(newWf)
 	assert.Nil(t, err)
-	assert.Equal(t, []string{"resubmit-hl9ft-3879090716"}, nodes)
+	assert.Equal(t, []string{"resubmit-hl9ft-random-fail-3879090716"}, nodes)
 
 	expectedNewWfString := `apiVersion: argoproj.io/v1alpha1
 kind: Workflow
@@ -181,7 +181,7 @@ spec:
       command:
       - python
       - -c
-      image: python:alpine3.6
+      image: python:alpine3.9
       name: ""
       resources: {}
     inputs: {}
@@ -202,7 +202,7 @@ status:
       startedAt: "2021-05-26T09:14:07Z"
       templateName: rand-fail-dag
       type: DAG
-    resubmit-hl9ft-3929423573:
+    resubmit-hl9ft-random-fail-3929423573:
       boundaryID: resubmit-hl9ft
       children:
       - resubmit-hl9ft-3879090716

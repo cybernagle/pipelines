@@ -77,7 +77,7 @@ autodoc_default_options = {
 }
 
 html_theme = 'sphinx_immaterial'
-html_title = 'kfp-kubernetes Reference Documentation'
+html_title = 'KFP SDK kfp-kubernetes API Reference'
 html_static_path = ['_static']
 html_css_files = ['custom.css']
 html_logo = '_static/kubeflow.png'
@@ -137,13 +137,43 @@ html_theme_options = {
     },
     'version_dropdown':
         True,
-    'version_info': [{
-        'version':
-            'https://kfp-kubernetes.readthedocs.io/en/kfp-kubernetes-0.0.1/',
-        'title':
-            '0.0.1',
-        'aliases': ['stable'],
-    },],
+    'version_info': [
+        {
+            'version':
+                'https://kfp-kubernetes.readthedocs.io/en/kfp-kubernetes-1.3.0/',
+            'title':
+                '1.3.0',
+            'aliases': ['stable'],
+        },
+        {
+            'version':
+                'https://kfp-kubernetes.readthedocs.io/en/kfp-kubernetes-1.2.0/',
+            'title':
+                '1.2.0',
+            'aliases': [],
+        },
+        {
+            'version':
+                'https://kfp-kubernetes.readthedocs.io/en/kfp-kubernetes-1.1.0/',
+            'title':
+                '1.1.0',
+            'aliases': [],
+        },
+        {
+            'version':
+                'https://kfp-kubernetes.readthedocs.io/en/kfp-kubernetes-1.0.0/',
+            'title':
+                '1.0.0',
+            'aliases': [],
+        },
+        {
+            'version':
+                'https://kfp-kubernetes.readthedocs.io/en/kfp-kubernetes-0.0.1/',
+            'title':
+                '0.0.1',
+            'aliases': [],
+        },
+    ],
     # "toc_title_is_page_title": True,
 }
 # Add any paths that contain templates here, relative to this directory.

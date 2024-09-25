@@ -4,7 +4,7 @@
   "license": "Apache-2.0",
   "private": true,
   "dependencies": {
-    "@craco/craco": "^6.2.0",
+    "@craco/craco": "^7.0.0",
     "@material-ui/core": "^3.9.1",
     "@material-ui/icons": "^3.0.1",
     "@types/lodash.groupby": "^4.6.6",
@@ -23,7 +23,7 @@
     "lodash.flatten": "^4.4.0",
     "lodash.groupby": "^4.6.0",
     "lodash.isfunction": "^3.0.9",
-    "markdown-to-jsx": "^6.10.3",
+    "markdown-to-jsx": "^6.11.4",
     "pako": "^2.0.4",
     "portable-fetch": "^3.0.0",
     "proto3-json-serializer": "^0.1.6",
@@ -92,7 +92,6 @@
     "test:server:coverage": "cd ./server && npm test -- --coverage && cd ..",
     "test:coverage": "npm test -- --coverage && npm run test:server:coverage",
     "test:ci": "export CI=true && npm run format:check && npm run lint && npm run test:coverage",
-    "test:ci:prow": "npm set unsafe-perm true && npm ci && npm run test:ci && ./scripts/report-coveralls.sh",
     "storybook": "start-storybook -p 6006 -s public",
     "build:storybook": "build-storybook -s public"
   },

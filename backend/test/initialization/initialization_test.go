@@ -38,7 +38,7 @@ func (s *InitializationTest) SetupTest() {
 		return
 	}
 
-	err := test.WaitForReady(*namespace, *initializeTimeout)
+	err := test.WaitForReady(*initializeTimeout)
 	if err != nil {
 		glog.Exitf("Failed to initialize test. Error: %v", err)
 	}
@@ -54,7 +54,7 @@ func (s *InitializationTest) TestInitialization() {
 	t := s.T()
 
 	/* ---------- Verify that only the default experiment exists ---------- */
-	experiments, totalSize, _, err := s.experimentClient.List(&params.ListExperimentsV1Params{})
+	experiments, totalSize, _, err := s.experimentClient.List(&params.ExperimentServiceListExperimentsV1Params{})
 	assert.Nil(t, err)
 	assert.Equal(t, 1, totalSize)
 	assert.True(t, len(experiments) == 1)

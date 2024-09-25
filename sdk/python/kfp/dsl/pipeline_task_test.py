@@ -145,42 +145,40 @@ class PipelineTaskTest(parameterized.TestCase):
     @parameterized.parameters(
         {
             'cpu': '123',
-            'expected_cpu_number': 123,
+            'expected_cpu': '123',
         },
         {
             'cpu': '123m',
-            'expected_cpu_number': 0.123,
+            'expected_cpu': '123m',
         },
         {
             'cpu': '123.0',
-            'expected_cpu_number': 123,
+            'expected_cpu': '123.0',
         },
         {
             'cpu': '123.0m',
-            'expected_cpu_number': 0.123,
+            'expected_cpu': '123.0m',
         },
     )
-    def test_set_valid_cpu_request_limit(self, cpu: str,
-                                         expected_cpu_number: float):
+    def test_set_valid_cpu_request_limit(self, cpu: str, expected_cpu: str):
         task = pipeline_task.PipelineTask(
             component_spec=structures.ComponentSpec.from_yaml_documents(
                 V2_YAML),
             args={'input1': 'value'},
         )
         task.set_cpu_request(cpu)
-        self.assertEqual(expected_cpu_number,
+        self.assertEqual(expected_cpu,
                          task.container_spec.resources.cpu_request)
         task.set_cpu_limit(cpu)
-        self.assertEqual(expected_cpu_number,
-                         task.container_spec.resources.cpu_limit)
+        self.assertEqual(expected_cpu, task.container_spec.resources.cpu_limit)
 
     @parameterized.parameters(
         {
-            'gpu_limit': '123',
-            'expected_gpu_number': 123,
+            'gpu_limit': '1',
+            'expected_gpu_number': '1',
         },)
     def test_set_valid_gpu_limit(self, gpu_limit: str,
-                                 expected_gpu_number: int):
+                                 expected_gpu_number: str):
         task = pipeline_task.PipelineTask(
             component_spec=structures.ComponentSpec.from_yaml_documents(
                 V2_YAML),
@@ -210,15 +208,19 @@ class PipelineTaskTest(parameterized.TestCase):
 
     @parameterized.parameters(
         {
-            'limit': '123',
-            'expected': 123,
+            'limit': '1',
+            'expected_limit': '1',
         },
         {
-            'limit': 123,
-            'expected': 123,
+            'limit': 1,
+            'expected_limit': '1',
+        },
+        {
+            'limit': 16,
+            'expected_limit': '16',
         },
     )
-    def test_set_accelerator_limit(self, limit, expected):
+    def test_set_accelerator_limit(self, limit, expected_limit):
         task = pipeline_task.PipelineTask(
             component_spec=structures.ComponentSpec.from_yaml_documents(
                 V2_YAML),
@@ -226,74 +228,74 @@ class PipelineTaskTest(parameterized.TestCase):
         )
 
         task.set_accelerator_limit(limit)
-        self.assertEqual(expected,
+        self.assertEqual(expected_limit,
                          task.container_spec.resources.accelerator_count)
 
     @parameterized.parameters(
         {
             'memory': '1E',
-            'expected_memory_number': 1000000000,
+            'expected_memory': '1E',
         },
         {
             'memory': '15Ei',
-            'expected_memory_number': 17293822569.102703,
+            'expected_memory': '15Ei',
         },
         {
             'memory': '2P',
-            'expected_memory_number': 2000000,
+            'expected_memory': '2P',
         },
         {
             'memory': '25Pi',
-            'expected_memory_number': 28147497.6710656,
+            'expected_memory': '25Pi',
         },
         {
             'memory': '3T',
-            'expected_memory_number': 3000,
+            'expected_memory': '3T',
         },
         {
             'memory': '35Ti',
-            'expected_memory_number': 38482.90697216,
+            'expected_memory': '35Ti',
         },
         {
             'memory': '4G',
-            'expected_memory_number': 4,
+            'expected_memory': '4G',
         },
         {
             'memory': '45Gi',
-            'expected_memory_number': 48.31838208,
+            'expected_memory': '45Gi',
         },
         {
             'memory': '5M',
-            'expected_memory_number': 0.005,
+            'expected_memory': '5M',
         },
         {
             'memory': '55Mi',
-            'expected_memory_number': 0.05767168,
+            'expected_memory': '55Mi',
         },
         {
             'memory': '6K',
-            'expected_memory_number': 0.000006,
+            'expected_memory': '6K',
         },
         {
             'memory': '65Ki',
-            'expected_memory_number': 0.00006656,
+            'expected_memory': '65Ki',
         },
         {
             'memory': '7000',
-            'expected_memory_number': 0.000007,
+            'expected_memory': '7000',
         },
     )
-    def test_set_memory_limit(self, memory: str, expected_memory_number: int):
+    def test_set_memory_limit(self, memory: str, expected_memory: str):
         task = pipeline_task.PipelineTask(
             component_spec=structures.ComponentSpec.from_yaml_documents(
                 V2_YAML),
             args={'input1': 'value'},
         )
         task.set_memory_request(memory)
-        self.assertEqual(expected_memory_number,
+        self.assertEqual(expected_memory,
                          task.container_spec.resources.memory_request)
         task.set_memory_limit(memory)
-        self.assertEqual(expected_memory_number,
+        self.assertEqual(expected_memory,
                          task.container_spec.resources.memory_limit)
 
     def test_set_accelerator_type_with_type_only(self):
@@ -305,7 +307,7 @@ class PipelineTaskTest(parameterized.TestCase):
         task.set_accelerator_type('NVIDIA_TESLA_K80')
         self.assertEqual(
             structures.ResourceSpec(
-                accelerator_type='NVIDIA_TESLA_K80', accelerator_count=1),
+                accelerator_type='NVIDIA_TESLA_K80', accelerator_count='1'),
             task.container_spec.resources)
 
     def test_set_accelerator_type_with_accelerator_count(self):
@@ -314,10 +316,10 @@ class PipelineTaskTest(parameterized.TestCase):
                 V2_YAML),
             args={'input1': 'value'},
         )
-        task.set_accelerator_limit('5').set_accelerator_type('TPU_V3')
+        task.set_accelerator_limit('4').set_accelerator_type('TPU_V3')
         self.assertEqual(
             structures.ResourceSpec(
-                accelerator_type='TPU_V3', accelerator_count=5),
+                accelerator_type='TPU_V3', accelerator_count='4'),
             task.container_spec.resources)
 
     def test_set_env_variable(self):
@@ -375,6 +377,135 @@ class TestPlatformSpecificFunctionality(unittest.TestCase):
                     r"Can only access '\.platform_spec' property on a tasks created from pipelines\. Use '\.platform_config' for tasks created from primitive components\."
             ):
                 t.platform_spec
+
+
+class TestTaskInFinalState(unittest.TestCase):
+    """Tests PipelineTask in the state FINAL.
+
+    Many properties and methods will be blocked.
+
+    Also tests that the .output and .outputs behavior behaves as expected when the outputs are values, not placeholders, as will be the case when PipelineTask is in the state FINAL.
+    """
+
+    def test_output_property(self):
+        task = pipeline_task.PipelineTask(
+            component_spec=structures.ComponentSpec.from_yaml_documents(
+                V2_YAML),
+            args={'input1': 'value'},
+        )
+        task.state = pipeline_task.TaskState.FINAL
+        task._outputs = {'Output': 1}
+        self.assertEqual(task.output, 1)
+        self.assertEqual(task.outputs['Output'], 1)
+
+    def test_outputs_property(self):
+        task = pipeline_task.PipelineTask(
+            component_spec=structures.ComponentSpec.from_yaml_documents(
+                V2_YAML),
+            args={'input1': 'value'},
+        )
+        task.state = pipeline_task.TaskState.FINAL
+        task._outputs = {
+            'int_output':
+                1,
+            'str_output':
+                'foo',
+            'dataset_output':
+                dsl.Dataset(
+                    name='dataset_output',
+                    uri='foo/bar/dataset_output',
+                    metadata={'key': 'value'})
+        }
+        self.assertEqual(task.outputs['int_output'], 1)
+        self.assertEqual(task.outputs['str_output'], 'foo')
+        assert_artifacts_equal(
+            self,
+            task.outputs['dataset_output'],
+            dsl.Dataset(
+                name='dataset_output',
+                uri='foo/bar/dataset_output',
+                metadata={'key': 'value'}),
+        )
+
+    def test_platform_spec_property(self):
+        task = pipeline_task.PipelineTask(
+            component_spec=structures.ComponentSpec.from_yaml_documents(
+                V2_YAML),
+            args={'input1': 'value'},
+        )
+        task.state = pipeline_task.TaskState.FINAL
+        with self.assertRaisesRegex(
+                Exception,
+                r'Platform-specific features are not supported for local execution\.'
+        ):
+            task.platform_spec
+
+    def test_name_property(self):
+        task = pipeline_task.PipelineTask(
+            component_spec=structures.ComponentSpec.from_yaml_documents(
+                V2_YAML),
+            args={'input1': 'value'},
+        )
+        task.state = pipeline_task.TaskState.FINAL
+        self.assertEqual(task.name, 'component1')
+
+    def test_inputs_property(self):
+        task = pipeline_task.PipelineTask(
+            component_spec=structures.ComponentSpec.from_yaml_documents(
+                V2_YAML),
+            args={'input1': 'value'},
+        )
+        task.state = pipeline_task.TaskState.FINAL
+        self.assertEqual(task.inputs, {'input1': 'value'})
+
+    def test_dependent_tasks_property(self):
+        task = pipeline_task.PipelineTask(
+            component_spec=structures.ComponentSpec.from_yaml_documents(
+                V2_YAML),
+            args={'input1': 'value'},
+        )
+        task.state = pipeline_task.TaskState.FINAL
+        with self.assertRaisesRegex(
+                Exception,
+                r'Task has no dependent tasks since it is executed independently\.'
+        ):
+            task.dependent_tasks
+
+    def test_sampling_of_task_configuration_methods(self):
+        task = pipeline_task.PipelineTask(
+            component_spec=structures.ComponentSpec.from_yaml_documents(
+                V2_YAML),
+            args={'input1': 'value'},
+        )
+        task.state = pipeline_task.TaskState.FINAL
+        with self.assertRaisesRegex(
+                Exception,
+                r"Task configuration methods are not supported for local execution\. Got call to '\.set_caching_options\(\)'\."
+        ):
+            task.set_caching_options(enable_caching=True)
+        with self.assertRaisesRegex(
+                Exception,
+                r"Task configuration methods are not supported for local execution\. Got call to '\.set_env_variable\(\)'\."
+        ):
+            task.set_env_variable(name='foo', value='BAR')
+        with self.assertRaisesRegex(
+                Exception,
+                r"Task configuration methods are not supported for local execution\. Got call to '\.ignore_upstream_failure\(\)'\."
+        ):
+            task.ignore_upstream_failure()
+
+
+def assert_artifacts_equal(
+    test_class: unittest.TestCase,
+    a1: dsl.Artifact,
+    a2: dsl.Artifact,
+) -> None:
+    test_class.assertEqual(a1.name, a2.name)
+    test_class.assertEqual(a1.uri, a2.uri)
+    test_class.assertEqual(a1.metadata, a2.metadata)
+    test_class.assertEqual(a1.schema_title, a2.schema_title)
+    test_class.assertEqual(a1.schema_version, a2.schema_version)
+    test_class.assertIsInstance(a1, type(a2))
 
 
 if __name__ == '__main__':

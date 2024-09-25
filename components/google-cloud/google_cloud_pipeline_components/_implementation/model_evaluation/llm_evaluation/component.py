@@ -29,8 +29,10 @@ from kfp.dsl import OutputPath
 def model_evaluation_text_generation(
     gcp_resources: OutputPath(str),
     evaluation_metrics: Output[Metrics],
+    row_based_metrics: Output[Metrics],
     project: str,
     location: str,
+    model_name: str,
     evaluation_task: str = 'text-generation',
     target_field_name: str = 'instance.output_text',
     prediction_field_name: str = 'predictions.content',
@@ -38,8 +40,9 @@ def model_evaluation_text_generation(
     joined_predictions_gcs_source: dsl.Input[Artifact] = None,
     predictions_gcs_source: dsl.Input[Artifact] = None,
     ground_truth_gcs_source: str = '',
+    enable_row_based_metrics: bool = False,
     display_name: str = 'model-evaluation-text-generation',
-    machine_type: str = 'e2-highmem-16',
+    machine_type: str = 'e2-standard-4',
     service_account: str = '',
     network: str = '',
     reserved_ip_ranges: List[str] = [],
@@ -53,6 +56,7 @@ def model_evaluation_text_generation(
   Args:
     project: The GCP project that runs the pipeline component.
     location: The GCP region that runs the pipeline component.
+    model_name: The name of the model to be evaluated.
     evaluation_task: The task that the large language model will be evaluated
       on. The evaluation component computes a set of metrics relevant to that
       specific task. Currently supported tasks are: `summarization`,
@@ -60,8 +64,7 @@ def model_evaluation_text_generation(
     target_field_name: The full name path of the features target field in the
       predictions file. Formatted to be able to find nested columns, delimited
       by `.`. Alternatively referred to as the ground truth (or
-      ground_truth_column) field. If not set, defaulted to
-      `inputs.ground_truth`.
+      ground_truth_column) field. If not set, defaulted to `inputs.output_text`.
     prediction_field_name: The full name path of the prediction field in the
       prediction file. Formatted to be able to find nested columns, delimited by
       `.`. If not set, defaulted to `predictions.content`.
@@ -77,7 +80,7 @@ def model_evaluation_text_generation(
       only ground truth files to be used for this evaluation.
     display_name: The name of the evaluation custom job.
     machine_type: The machine type of this custom job. If not set, defaulted to
-      `e2-highmem-16`. More details:
+      `e2-standard-4`. More details:
       https://cloud.google.com/compute/docs/machine-resource
     service_account: Sets the default service account for workload run-as
       account. The service account running the pipeline
@@ -106,11 +109,14 @@ def model_evaluation_text_generation(
       created.
 
   Returns:
-    evaluation_metrics: `Metrics` artifact representing the language model
-      evaluation metrics.
     gcp_resources: Serialized gcp_resources proto tracking the custom job.
       For more details, see
       https://github.com/kubeflow/pipelines/blob/master/components/google-cloud/google_cloud_pipeline_components/proto/README.md.
+    evaluation_metrics: `Metrics` artifact representing the language model
+      evaluation metrics.
+    row_based_metrics: `Metrics` artifact representing the language model
+      evaluation metrics of each instance. This is only available if
+      enable_row_based_metrics is set to True.
   """
   return gcpc_utils.build_serverless_customjob_container_spec(
       project=project,
@@ -120,6 +126,7 @@ def model_evaluation_text_generation(
           machine_type=machine_type,
           image_uri=version.LLM_EVAL_IMAGE_TAG,
           args=[
+              f'--model_name={model_name}',
               f'--evaluation_task={evaluation_task}',
               f'--target_field_name={target_field_name}',
               f'--prediction_field_name={prediction_field_name}',
@@ -128,6 +135,8 @@ def model_evaluation_text_generation(
               f'--predictions_gcs_source={predictions_gcs_source.uri}',
               f'--ground_truth_gcs_source={ground_truth_gcs_source}',
               f'--evaluation_metrics_output_path={evaluation_metrics.path}',
+              f'--enable_row_based_metrics={enable_row_based_metrics}',
+              f'--row_based_metrics_output_path={row_based_metrics.path}',
               '--executor_input={{$.json_escape[1]}}',
           ],
           service_account=service_account,

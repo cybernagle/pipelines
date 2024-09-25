@@ -57,6 +57,9 @@ parser = argparse.ArgumentParser(
 )
 parser.add_argument('--metrics', dest='metrics', type=str, default='')
 parser.add_argument(
+    '--row_based_metrics', dest='row_based_metrics', type=str, default=''
+)
+parser.add_argument(
     '--classification_metrics',
     dest='classification_metrics',
     type=str,
@@ -274,6 +277,11 @@ def main(argv):
           'pipeline_job_resource_name': parsed_args.pipeline_job_resource_name,
           'evaluation_dataset_type': parsed_args.dataset_type,
           'evaluation_dataset_path': dataset_paths or None,
+          'row_based_metrics_path': (
+              parsed_args.row_based_metrics
+              if parsed_args.row_based_metrics
+              else None
+          ),
       }.items()
       if value
   }
@@ -330,13 +338,13 @@ def main(argv):
           and slice_spec['dimension'] == 'annotationSpec'
       ):
         slice_config['model_explanation'] = {
-            'mean_attributions': [
-                {
-                    'feature_attributions': sliced_feature_attributions[
-                        slice_spec['value']
-                    ]
-                }
-            ]
+            'mean_attributions': [{
+                'feature_attributions': (
+                    sliced_feature_attributions[slice_spec['value']]
+                    if slice_spec['value'] in sliced_feature_attributions
+                    else None
+                )
+            }]
         }
         slices_with_explanations.append(slice_config)
       elif 'slice_spec' in slice_spec:

@@ -19,7 +19,7 @@ import kfp
 
 
 @kfp.dsl.container_component
-def SupervisedFineTuner(  # pylint: disable=invalid-name
+def supervised_fine_tuner(
     project: str,
     location: str,
     train_steps: int,
@@ -39,6 +39,7 @@ def SupervisedFineTuner(  # pylint: disable=invalid-name
     batch_size: int = 64,
     learning_rate_multiplier: float = 1.0,
     lora_dim: int = 0,
+    num_microbatches: int = 0,
 ) -> kfp.dsl.ContainerSpec:  # pylint: disable=g-doc-args
   """Performs supervised fine tuning.
 
@@ -65,6 +66,9 @@ def SupervisedFineTuner(  # pylint: disable=invalid-name
       then use full-tuning.
     learning_rate_multiplier: Constant multiplied by the base learning rate used
       to adjust the learning rate during supervised fine tuning.
+    num_microbatches: Number of microbatches to break the total batch size into
+      during training. If <= 1, the model is trained on the full batch size
+      directly.
 
   Returns:
     output_model_path: Fine-tuned model path.
@@ -82,6 +86,7 @@ def SupervisedFineTuner(  # pylint: disable=invalid-name
           machine_type=machine_type,
           image_uri=image_uri,
           args=[
+              '--app_name=supervised_fine_tuner',
               f'--input_model_path={input_model_path}',
               f'--train_steps={train_steps}',
               f'--inputs_sequence_length={inputs_sequence_length}',
@@ -99,6 +104,7 @@ def SupervisedFineTuner(  # pylint: disable=invalid-name
                   f'{kfp.dsl.PIPELINE_TASK_ID_PLACEHOLDER}'
               ),
               f'--lora_dim={lora_dim}',
+              f'--num_microbatches={num_microbatches}',
           ],
       ),
       gcp_resources=gcp_resources,

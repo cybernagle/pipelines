@@ -105,10 +105,10 @@ def construct_type_for_inputpath_or_outputpath(
                                                        type_.schema_version)
     elif isinstance(
             type_,
-            str) and type_.lower() in type_utils._ARTIFACT_CLASSES_MAPPING:
+            str) and type_.lower() in type_utils.ARTIFACT_CLASSES_MAPPING:
         # v1 artifact backward compat, e.g. dsl.OutputPath('Dataset')
         return type_utils.create_bundled_artifact_type(
-            type_utils._ARTIFACT_CLASSES_MAPPING[type_.lower()].schema_title)
+            type_utils.ARTIFACT_CLASSES_MAPPING[type_.lower()].schema_title)
     elif type_utils.get_parameter_type(type_):
         return type_
     else:
@@ -227,7 +227,7 @@ def get_short_type_name(type_name: str) -> str:
     Returns:
       The short form type name or the original name if pattern doesn't match.
     """
-    match = re.match('(typing\.)?(?P<type>\w+)(?:\[.+\])?', type_name)
+    match = re.match(r'(typing\.)?(?P<type>\w+)(?:\[.+\])?', type_name)
     return match['type'] if match else type_name
 
 

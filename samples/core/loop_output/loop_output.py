@@ -13,15 +13,16 @@
 # limitations under the License.
 
 from kfp import compiler, dsl
+from typing import List
 
 
 @dsl.component
-def args_generator_op() -> str:
-    return '[1.1, 1.2, 1.3]'
+def args_generator_op() -> List[str]:
+    return ['1.1', '1.2', '1.3']
 
 
 # TODO(Bobgy): how can we make this component with type float?
-# got error: kfp.components.types.type_utils.InconsistentTypeException:
+# got error: kfp.dsl.types.type_utils.InconsistentTypeException:
 # Incompatible argument passed to the input "s" of component "Print op": Argument
 # type "STRING" is incompatible with the input type "NUMBER_DOUBLE"
 @dsl.component

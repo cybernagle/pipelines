@@ -89,7 +89,7 @@ func Test_GetPipeline(t *testing.T) {
 	mlmdClient, err := NewTestMlmdClient()
 	fatalIf(err)
 
-	pipeline, err := client.GetPipeline(ctx, "get-pipeline-test", runId, namespace, runResource, pipelineRoot)
+	pipeline, err := client.GetPipeline(ctx, "get-pipeline-test", runId, namespace, runResource, pipelineRoot, "")
 	fatalIf(err)
 	expectPipelineRoot := fmt.Sprintf("%s/get-pipeline-test/%s", pipelineRoot, runId)
 	if pipeline.GetPipelineRoot() != expectPipelineRoot {
@@ -138,12 +138,12 @@ func Test_GetPipeline_Twice(t *testing.T) {
 	client, err := metadata.NewClient(testMlmdServerAddress, testMlmdServerPort)
 	fatalIf(err)
 
-	pipeline, err := client.GetPipeline(ctx, "get-pipeline-test", runId, namespace, runResource, pipelineRoot)
+	pipeline, err := client.GetPipeline(ctx, "get-pipeline-test", runId, namespace, runResource, pipelineRoot, "")
 	fatalIf(err)
 	// The second call to GetPipeline won't fail because it avoid inserting to MLMD again.
-	samePipeline, err := client.GetPipeline(ctx, "get-pipeline-test", runId, namespace, runResource, pipelineRoot)
+	samePipeline, err := client.GetPipeline(ctx, "get-pipeline-test", runId, namespace, runResource, pipelineRoot, "")
 	fatalIf(err)
-	if (pipeline.GetCtxID() != samePipeline.GetCtxID()) {
+	if pipeline.GetCtxID() != samePipeline.GetCtxID() {
 		t.Errorf("Expect pipeline context ID %d, actual is %d", pipeline.GetCtxID(), samePipeline.GetCtxID())
 	}
 }
@@ -159,7 +159,7 @@ func Test_GetPipelineFromExecution(t *testing.T) {
 	}
 	client := newLocalClientOrFatal(t)
 	ctx := context.Background()
-	pipeline, err := client.GetPipeline(ctx, "get-pipeline-from-execution", newUUIDOrFatal(t), "kubeflow", "workflow/abc", "gs://my-bucket/root")
+	pipeline, err := client.GetPipeline(ctx, "get-pipeline-from-execution", newUUIDOrFatal(t), "kubeflow", "workflow/abc", "gs://my-bucket/root", "")
 	fatalIf(err)
 	execution, err := client.CreateExecution(ctx, pipeline, &metadata.ExecutionConfig{
 		TaskName:      "task1",
@@ -193,7 +193,7 @@ func Test_GetPipelineConcurrently(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := client.GetPipeline(ctx, fmt.Sprintf("get-pipeline-concurrently-test-%s", runIdText), runIdText, namespace, "workflows.argoproj.io/hello-world-"+runIdText, pipelineRoot)
+			_, err := client.GetPipeline(ctx, fmt.Sprintf("get-pipeline-concurrently-test-%s", runIdText), runIdText, namespace, "workflows.argoproj.io/hello-world-"+runIdText, pipelineRoot, "")
 			if err != nil {
 				t.Error(err)
 			}
@@ -205,7 +205,7 @@ func Test_GetPipelineConcurrently(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := client.GetPipeline(ctx, fmt.Sprintf("get-pipeline-concurrently-test-%s", runIdText), runIdText, namespace, "workflows.argoproj.io/hello-world-"+runIdText, pipelineRoot)
+			_, err := client.GetPipeline(ctx, fmt.Sprintf("get-pipeline-concurrently-test-%s", runIdText), runIdText, namespace, "workflows.argoproj.io/hello-world-"+runIdText, pipelineRoot, "")
 			if err != nil {
 				t.Error(err)
 			}
@@ -214,13 +214,67 @@ func Test_GetPipelineConcurrently(t *testing.T) {
 	wg.Wait()
 }
 
+func Test_GenerateOutputURI(t *testing.T) {
+	// Const define the artifact name
+	const (
+		pipelineName      = "my-pipeline-name"
+		runID             = "my-run-id"
+		pipelineRoot      = "minio://mlpipeline/v2/artifacts"
+		pipelineRootQuery = "?query=string&another=query"
+	)
+	tests := []struct {
+		name                string
+		queryString         string
+		paths               []string
+		preserveQueryString bool
+		want                string
+	}{
+		{
+			name:                "plain pipeline root without preserveQueryString",
+			queryString:         "",
+			paths:               []string{pipelineName, runID},
+			preserveQueryString: false,
+			want:                fmt.Sprintf("%s/%s/%s", pipelineRoot, pipelineName, runID),
+		},
+		{
+			name:                "plain pipeline root with preserveQueryString",
+			queryString:         "",
+			paths:               []string{pipelineName, runID},
+			preserveQueryString: true,
+			want:                fmt.Sprintf("%s/%s/%s", pipelineRoot, pipelineName, runID),
+		},
+		{
+			name:                "pipeline root with query string without preserveQueryString",
+			queryString:         pipelineRootQuery,
+			paths:               []string{pipelineName, runID},
+			preserveQueryString: false,
+			want:                fmt.Sprintf("%s/%s/%s", pipelineRoot, pipelineName, runID),
+		},
+		{
+			name:                "pipeline root with query string with preserveQueryString",
+			queryString:         pipelineRootQuery,
+			paths:               []string{pipelineName, runID},
+			preserveQueryString: true,
+			want:                fmt.Sprintf("%s/%s/%s%s", pipelineRoot, pipelineName, runID, pipelineRootQuery),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := metadata.GenerateOutputURI(fmt.Sprintf("%s%s", pipelineRoot, tt.queryString), tt.paths, tt.preserveQueryString)
+			if diff := cmp.Diff(got, tt.want); diff != "" {
+				t.Errorf("GenerateOutputURI() = %v, want %v\nDiff (-want, +got)\n%s", got, tt.want, diff)
+			}
+		})
+	}
+}
+
 func Test_DAG(t *testing.T) {
 	t.Skip("Temporarily disable the test that requires cluster connection.")
 
 	client := newLocalClientOrFatal(t)
 	ctx := context.Background()
 	// These parameters do not matter.
-	pipeline, err := client.GetPipeline(ctx, "pipeline-name", newUUIDOrFatal(t), "ns1", "workflow/pipeline-1234", pipelineRoot)
+	pipeline, err := client.GetPipeline(ctx, "pipeline-name", newUUIDOrFatal(t), "ns1", "workflow/pipeline-1234", pipelineRoot, "")
 	if err != nil {
 		t.Fatal(err)
 	}

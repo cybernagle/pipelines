@@ -41,7 +41,7 @@ func (s *VisualizationApiTest) SetupTest() {
 	}
 
 	if !*isDevMode {
-		err := test.WaitForReady(*namespace, *initializeTimeout)
+		err := test.WaitForReady(*initializeTimeout)
 		if err != nil {
 			glog.Exitf("Failed to initialize test. Error: %v", err)
 		}
@@ -79,7 +79,7 @@ func (s *VisualizationApiTest) TestVisualizationAPI() {
 		Arguments: `{"code": ["print(2)"]}`,
 		Type:      visualization_model.APIVisualizationTypeCUSTOM,
 	}
-	customVisualization, err := s.visualizationClient.Create(&params.CreateVisualizationV1Params{
+	customVisualization, err := s.visualizationClient.Create(&params.VisualizationServiceCreateVisualizationV1Params{
 		Body: visualization,
 	})
 	assert.Nil(t, err)

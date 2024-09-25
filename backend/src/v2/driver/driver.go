@@ -17,9 +17,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path"
+	"github.com/kubeflow/pipelines/backend/src/v2/objectstore"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/golang/glog"
@@ -132,26 +131,38 @@ func RootDAG(ctx context.Context, opts Options, mlmd *metadata.Client) (executio
 	}
 	// TODO(v2): in pipeline spec, rename GCS output directory to pipeline root.
 	pipelineRoot := opts.RuntimeConfig.GetGcsOutputDirectory()
+
+	restConfig, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize kubernetes client: %w", err)
+	}
+	k8sClient, err := kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize kubernetes client set: %w", err)
+	}
+	cfg, err := config.FromConfigMap(ctx, k8sClient, opts.Namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	storeSessionInfo := objectstore.SessionInfo{}
 	if pipelineRoot != "" {
 		glog.Infof("PipelineRoot=%q", pipelineRoot)
 	} else {
-		restConfig, err := rest.InClusterConfig()
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize kubernetes client: %w", err)
-		}
-		k8sClient, err := kubernetes.NewForConfig(restConfig)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize kubernetes client set: %w", err)
-		}
-		cfg, err := config.FromConfigMap(ctx, k8sClient, opts.Namespace)
-		if err != nil {
-			return nil, err
-		}
 		pipelineRoot = cfg.DefaultPipelineRoot()
 		glog.Infof("PipelineRoot=%q from default config", pipelineRoot)
 	}
+	storeSessionInfo, err = cfg.GetStoreSessionInfo(pipelineRoot)
+	if err != nil {
+		return nil, err
+	}
+	storeSessionInfoJSON, err := json.Marshal(storeSessionInfo)
+	if err != nil {
+		return nil, err
+	}
+	storeSessionInfoStr := string(storeSessionInfoJSON)
 	// TODO(Bobgy): fill in run resource.
-	pipeline, err := mlmd.GetPipeline(ctx, opts.PipelineName, opts.RunID, opts.Namespace, "run-resource", pipelineRoot)
+	pipeline, err := mlmd.GetPipeline(ctx, opts.PipelineName, opts.RunID, opts.Namespace, "run-resource", pipelineRoot, storeSessionInfoStr)
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +241,7 @@ func Container(ctx context.Context, opts Options, mlmd *metadata.Client, cacheCl
 	}
 	// TODO(Bobgy): there's no need to pass any parameters, because pipeline
 	// and pipeline run context have been created by root DAG driver.
-	pipeline, err := mlmd.GetPipeline(ctx, opts.PipelineName, opts.RunID, "", "", "")
+	pipeline, err := mlmd.GetPipeline(ctx, opts.PipelineName, opts.RunID, "", "", "", "")
 	if err != nil {
 		return nil, err
 	}
@@ -376,9 +387,6 @@ func initPodSpecPatch(
 	userCmdArgs = append(userCmdArgs, container.Command...)
 	userCmdArgs = append(userCmdArgs, container.Args...)
 	launcherCmd := []string{
-		// TODO(Bobgy): workaround argo emissary executor bug, after we upgrade to an argo version with the bug fix, we can remove the following line.
-		// Reference: https://github.com/argoproj/argo-workflows/issues/7406
-		"/var/run/argo/argoexec", "emissary", "--",
 		component.KFPLauncherPath,
 		// TODO(Bobgy): no need to pass pipeline_name and run_id, these info can be fetched via pipeline context and pipeline run context which have been created by root DAG driver.
 		"--pipeline_name", pipelineName,
@@ -477,17 +485,58 @@ func extendPodSpecPatch(
 		podSpec.Containers[0].VolumeMounts = append(podSpec.Containers[0].VolumeMounts, volumeMounts...)
 	}
 
+	// Get image pull policy
+	pullPolicy := kubernetesExecutorConfig.GetImagePullPolicy()
+	if pullPolicy != "" {
+		policies := []string{"Always", "Never", "IfNotPresent"}
+		found := false
+		for _, value := range policies {
+			if value == pullPolicy {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("unsupported value: %s. ImagePullPolicy should be one of 'Always', 'Never' or 'IfNotPresent'", pullPolicy)
+		}
+		// We assume that the user container always gets executed first within a pod.
+		podSpec.Containers[0].ImagePullPolicy = k8score.PullPolicy(pullPolicy)
+	}
+
 	// Get node selector information
 	if kubernetesExecutorConfig.GetNodeSelector() != nil {
 		podSpec.NodeSelector = kubernetesExecutorConfig.GetNodeSelector().GetLabels()
 	}
 
+	if tolerations := kubernetesExecutorConfig.GetTolerations(); tolerations != nil {
+		var k8sTolerations []k8score.Toleration
+
+		glog.Infof("Tolerations passed: %+v", tolerations)
+
+		for _, toleration := range tolerations {
+			if toleration != nil {
+				k8sToleration := k8score.Toleration{
+					Key:               toleration.Key,
+					Operator:          k8score.TolerationOperator(toleration.Operator),
+					Value:             toleration.Value,
+					Effect:            k8score.TaintEffect(toleration.Effect),
+					TolerationSeconds: toleration.TolerationSeconds,
+				}
+
+				k8sTolerations = append(k8sTolerations, k8sToleration)
+			}
+		}
+
+		podSpec.Tolerations = k8sTolerations
+	}
+
 	// Get secret mount information
 	for _, secretAsVolume := range kubernetesExecutorConfig.GetSecretAsVolume() {
+		optional := secretAsVolume.Optional != nil && *secretAsVolume.Optional
 		secretVolume := k8score.Volume{
 			Name: secretAsVolume.GetSecretName(),
 			VolumeSource: k8score.VolumeSource{
-				Secret: &k8score.SecretVolumeSource{SecretName: secretAsVolume.GetSecretName()},
+				Secret: &k8score.SecretVolumeSource{SecretName: secretAsVolume.GetSecretName(), Optional: &optional},
 			},
 		}
 		secretVolumeMount := k8score.VolumeMount{
@@ -514,6 +563,132 @@ func extendPodSpecPatch(
 		}
 	}
 
+	// Get config map mount information
+	for _, configMapAsVolume := range kubernetesExecutorConfig.GetConfigMapAsVolume() {
+		optional := configMapAsVolume.Optional != nil && *configMapAsVolume.Optional
+		configMapVolume := k8score.Volume{
+			Name: configMapAsVolume.GetConfigMapName(),
+			VolumeSource: k8score.VolumeSource{
+				ConfigMap: &k8score.ConfigMapVolumeSource{
+					LocalObjectReference: k8score.LocalObjectReference{Name: configMapAsVolume.GetConfigMapName()}, Optional: &optional},
+			},
+		}
+		configMapVolumeMount := k8score.VolumeMount{
+			Name:      configMapAsVolume.GetConfigMapName(),
+			MountPath: configMapAsVolume.GetMountPath(),
+		}
+		podSpec.Volumes = append(podSpec.Volumes, configMapVolume)
+		podSpec.Containers[0].VolumeMounts = append(podSpec.Containers[0].VolumeMounts, configMapVolumeMount)
+	}
+
+	// Get config map env information
+	for _, configMapAsEnv := range kubernetesExecutorConfig.GetConfigMapAsEnv() {
+		for _, keyToEnv := range configMapAsEnv.GetKeyToEnv() {
+			configMapEnvVar := k8score.EnvVar{
+				Name: keyToEnv.GetEnvVar(),
+				ValueFrom: &k8score.EnvVarSource{
+					ConfigMapKeyRef: &k8score.ConfigMapKeySelector{
+						Key: keyToEnv.GetConfigMapKey(),
+					},
+				},
+			}
+			configMapEnvVar.ValueFrom.ConfigMapKeyRef.LocalObjectReference.Name = configMapAsEnv.GetConfigMapName()
+			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, configMapEnvVar)
+		}
+	}
+
+	// Get image pull secret information
+	for _, imagePullSecret := range kubernetesExecutorConfig.GetImagePullSecret() {
+		podSpec.ImagePullSecrets = append(podSpec.ImagePullSecrets, k8score.LocalObjectReference{Name: imagePullSecret.GetSecretName()})
+	}
+
+	// Get Kubernetes FieldPath Env information
+	for _, fieldPathAsEnv := range kubernetesExecutorConfig.GetFieldPathAsEnv() {
+		fieldPathEnvVar := k8score.EnvVar{
+			Name: fieldPathAsEnv.GetName(),
+			ValueFrom: &k8score.EnvVarSource{
+				FieldRef: &k8score.ObjectFieldSelector{
+					FieldPath: fieldPathAsEnv.GetFieldPath(),
+				},
+			},
+		}
+		podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, fieldPathEnvVar)
+	}
+
+	// Get container timeout information
+	timeout := kubernetesExecutorConfig.GetActiveDeadlineSeconds()
+	if timeout > 0 {
+		podSpec.ActiveDeadlineSeconds = &timeout
+	}
+
+	// Get Pod Generic Ephemeral volume information
+	for _, ephemeralVolumeSpec := range kubernetesExecutorConfig.GetGenericEphemeralVolume() {
+		var accessModes []k8score.PersistentVolumeAccessMode
+		for _, value := range ephemeralVolumeSpec.GetAccessModes() {
+			accessModes = append(accessModes, accessModeMap[value])
+		}
+		var storageClassName *string
+		storageClassName = nil
+		if !ephemeralVolumeSpec.GetDefaultStorageClass() {
+			_storageClassName := ephemeralVolumeSpec.GetStorageClassName()
+			storageClassName = &_storageClassName
+		}
+		ephemeralVolume := k8score.Volume{
+			Name: ephemeralVolumeSpec.GetVolumeName(),
+			VolumeSource: k8score.VolumeSource{
+				Ephemeral: &k8score.EphemeralVolumeSource{
+					VolumeClaimTemplate: &k8score.PersistentVolumeClaimTemplate{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels:      ephemeralVolumeSpec.GetMetadata().GetLabels(),
+							Annotations: ephemeralVolumeSpec.GetMetadata().GetAnnotations(),
+						},
+						Spec: k8score.PersistentVolumeClaimSpec{
+							AccessModes: accessModes,
+							Resources: k8score.ResourceRequirements{
+								Requests: k8score.ResourceList{
+									k8score.ResourceStorage: k8sres.MustParse(ephemeralVolumeSpec.GetSize()),
+								},
+							},
+							StorageClassName: storageClassName,
+						},
+					},
+				},
+			},
+		}
+		ephemeralVolumeMount := k8score.VolumeMount{
+			Name:      ephemeralVolumeSpec.GetVolumeName(),
+			MountPath: ephemeralVolumeSpec.GetMountPath(),
+		}
+		podSpec.Volumes = append(podSpec.Volumes, ephemeralVolume)
+		podSpec.Containers[0].VolumeMounts = append(podSpec.Containers[0].VolumeMounts, ephemeralVolumeMount)
+	}
+
+	// EmptyDirMounts
+	for _, emptyDirVolumeSpec := range kubernetesExecutorConfig.GetEmptyDirMounts() {
+		var sizeLimitResource *k8sres.Quantity
+		if emptyDirVolumeSpec.GetSizeLimit() != "" {
+			r := k8sres.MustParse(emptyDirVolumeSpec.GetSizeLimit())
+			sizeLimitResource = &r
+		}
+
+		emptyDirVolume := k8score.Volume{
+			Name: emptyDirVolumeSpec.GetVolumeName(),
+			VolumeSource: k8score.VolumeSource{
+				EmptyDir: &k8score.EmptyDirVolumeSource{
+					Medium:    k8score.StorageMedium(emptyDirVolumeSpec.GetMedium()),
+					SizeLimit: sizeLimitResource,
+				},
+			},
+		}
+		emptyDirVolumeMount := k8score.VolumeMount{
+			Name:      emptyDirVolumeSpec.GetVolumeName(),
+			MountPath: emptyDirVolumeSpec.GetMountPath(),
+		}
+
+		podSpec.Volumes = append(podSpec.Volumes, emptyDirVolume)
+		podSpec.Containers[0].VolumeMounts = append(podSpec.Containers[0].VolumeMounts, emptyDirVolumeMount)
+	}
+
 	return nil
 }
 
@@ -535,7 +710,7 @@ func DAG(ctx context.Context, opts Options, mlmd *metadata.Client) (execution *E
 	}
 	// TODO(Bobgy): there's no need to pass any parameters, because pipeline
 	// and pipeline run context have been created by root DAG driver.
-	pipeline, err := mlmd.GetPipeline(ctx, opts.PipelineName, opts.RunID, "", "", "")
+	pipeline, err := mlmd.GetPipeline(ctx, opts.PipelineName, opts.RunID, "", "", "", "")
 	if err != nil {
 		return nil, err
 	}
@@ -1062,7 +1237,9 @@ func provisionOutputs(pipelineRoot, taskName string, outputsSpec *pipelinespec.C
 		outputs.Artifacts[name] = &pipelinespec.ArtifactList{
 			Artifacts: []*pipelinespec.RuntimeArtifact{
 				{
-					Uri:      generateOutputURI(pipelineRoot, name, taskName),
+					// Do not preserve the query string for output artifacts, as otherwise
+					// they'd appear in file and artifact names.
+					Uri:      metadata.GenerateOutputURI(pipelineRoot, []string{taskName, name}, false),
 					Type:     artifact.GetArtifactType(),
 					Metadata: artifact.GetMetadata(),
 				},
@@ -1076,12 +1253,6 @@ func provisionOutputs(pipelineRoot, taskName string, outputsSpec *pipelinespec.C
 		}
 	}
 	return outputs
-}
-
-func generateOutputURI(root, artifactName string, taskName string) string {
-	// we cannot path.Join(root, taskName, artifactName), because root
-	// contains scheme like gs:// and path.Join cleans up scheme to gs:/
-	return fmt.Sprintf("%s/%s", strings.TrimRight(root, "/"), path.Join(taskName, artifactName))
 }
 
 var accessModeMap = map[string]k8score.PersistentVolumeAccessMode{
@@ -1121,7 +1292,7 @@ func kubernetesPlatformOps(
 		// We publish the execution, no matter this operartion succeeds or not
 		perr := publishDriverExecution(k8sClient, mlmd, ctx, createdExecution, outputParameters, nil, status)
 		if perr != nil && err != nil {
-			err = fmt.Errorf("failed to publish driver execution: %w. Also failed the Kubernetes platform operation: %w", perr, err)
+			err = fmt.Errorf("failed to publish driver execution: %s. Also failed the Kubernetes platform operation: %s", perr.Error(), err.Error())
 		} else if perr != nil {
 			err = fmt.Errorf("failed to publish driver execution: %w", perr)
 		}
@@ -1206,7 +1377,7 @@ func createPVC(
 	// Create execution regardless the operation succeeds or not
 	defer func() {
 		if createdExecution == nil {
-			pipeline, err := mlmd.GetPipeline(ctx, opts.PipelineName, opts.RunID, "", "", "")
+			pipeline, err := mlmd.GetPipeline(ctx, opts.PipelineName, opts.RunID, "", "", "", "")
 			if err != nil {
 				return
 			}
@@ -1286,7 +1457,7 @@ func createPVC(
 	ecfg.CachedMLMDExecutionID = cachedMLMDExecutionID
 	ecfg.FingerPrint = fingerPrint
 
-	pipeline, err := mlmd.GetPipeline(ctx, opts.PipelineName, opts.RunID, "", "", "")
+	pipeline, err := mlmd.GetPipeline(ctx, opts.PipelineName, opts.RunID, "", "", "", "")
 	if err != nil {
 		return "", createdExecution, pb.Execution_FAILED, fmt.Errorf("error getting pipeline from MLMD: %w", err)
 	}
@@ -1376,7 +1547,7 @@ func deletePVC(
 	// Create execution regardless the operation succeeds or not
 	defer func() {
 		if createdExecution == nil {
-			pipeline, err := mlmd.GetPipeline(ctx, opts.PipelineName, opts.RunID, "", "", "")
+			pipeline, err := mlmd.GetPipeline(ctx, opts.PipelineName, opts.RunID, "", "", "", "")
 			if err != nil {
 				return
 			}
@@ -1406,7 +1577,7 @@ func deletePVC(
 	ecfg.CachedMLMDExecutionID = cachedMLMDExecutionID
 	ecfg.FingerPrint = fingerPrint
 
-	pipeline, err := mlmd.GetPipeline(ctx, opts.PipelineName, opts.RunID, "", "", "")
+	pipeline, err := mlmd.GetPipeline(ctx, opts.PipelineName, opts.RunID, "", "", "", "")
 	if err != nil {
 		return createdExecution, pb.Execution_FAILED, fmt.Errorf("error getting pipeline from MLMD: %w", err)
 	}

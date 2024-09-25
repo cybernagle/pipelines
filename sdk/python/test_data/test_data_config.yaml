@@ -80,9 +80,6 @@ pipelines:
           "first_number": 1,
           "second_number": 2,
         }
-    - module: xgboost_sample_pipeline
-      name: xgboost_pipeline
-      execute: false
     - module: pipeline_with_metrics_outputs
       name: my_pipeline
       execute: true
@@ -190,6 +187,9 @@ pipelines:
       name: make_and_join_datasets
       execute: false
     - module: cross_loop_after_topology
+      name: my_pipeline
+      execute: false
+    - module: pipeline_with_parallelfor_list_artifacts
       name: my_pipeline
       execute: false
 components:

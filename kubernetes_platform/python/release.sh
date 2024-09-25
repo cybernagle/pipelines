@@ -43,12 +43,12 @@ else
     echo "Created package."
 
     echo "Testing install"
-    pip install $TARGET_TAR_FILE
+    pip install $TARGET_TAR_FILE --break-system-packages
     INSTALLED_VERSION=$(pip list | grep kfp-kubernetes | awk '{print $2}')
     if [[ "$INSTALLED_VERSION" != "$KFP_KUBERNETES_VERSION" ]]
     then
         echo "Something went wrong! Expected version $KFP_KUBERNETES_VERSION but found version $INSTALLED_VERSION"
     else
-        python -m twine upload --username kubeflow-pipelines $TARGET_TAR_FILE
+        python -m twine upload $TARGET_TAR_FILE
     fi
 fi
